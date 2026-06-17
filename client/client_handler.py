@@ -8,14 +8,11 @@ PUBLISH_TOPIC = "status/device"
 def on_connect(client, userdata, flags, reason_code, properties=None):
 	print("Succesful connection to broker")
 
-def on_message(client, userdata, msg):
-	print(f"Received the topic {msg.topic}: {msg.payload.decode()}")
-
-def init_client():
+def init_client(on_message_function):
 	client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
 
 	client.on_connect = on_connect
-	client.on_message = on_message
+	client.on_message = on_message_function
 
 	client.connect(BROKER, PORT, 60) # 60 for a 60s keep alive
 	client.subscribe(SUBSCRIBE_TOPIC)
