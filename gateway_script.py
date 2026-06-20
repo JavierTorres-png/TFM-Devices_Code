@@ -44,6 +44,13 @@ def process_message(msg):
 		output = azure.send_message_to_azure_ml(payload)
 		print(f"Received status code {output.status_code} with content: {output.text}")
 
+		# Send the received status to the client
+		if (output.status_code == 200):
+			message_to_publish = "{\"water_pump_status\":output.text}"
+			publisher = client_mqtt.init_publisher()
+			client_mqtt.publish_message(publisher, "status/device" + device_id, message_to_publish)
+
+
 # This function is used to validate the received payload and turn it into json
 def validate_and_process_payload(payload):
 	try:
@@ -61,12 +68,23 @@ def validate_and_process_payload(payload):
 
 	return data
 
+def thread_check_for_update():
+	try:
+		while True:
+			update = azure.check_for_update()
+			if (update):
+				publisher = client_mqtt.init_publisher()
+				client_mqtt.publish_message(publisher, "status/update", "New code update")
+			time.sleep(30000)
+	except KeyboardInterrupt:
+		# Print already in main
+		pass
+
 def main():
 	# Listen to ESP32 data
 	client_mqtt.init_client(on_mqtt_message)
 
-	publisher = client_mqtt.init_publisher()
-	client_mqtt.publish_message(publisher, "8C94DF6C050C", "Hello")
+	threading.Thread(target=thread_check_for_update, args=(), daemon=True).start()
 
 	try:
 		while True:

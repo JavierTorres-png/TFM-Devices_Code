@@ -3,7 +3,6 @@ import paho.mqtt.client as mqtt_client
 BROKER = "localhost"
 PORT = 1883
 SUBSCRIBE_TOPIC = "telemetry/#"
-PUBLISH_TOPIC = "status/device"
 
 def on_connect(client, userdata, flags, reason_code, properties=None):
 	print("Succesful connection to broker")
@@ -19,8 +18,8 @@ def init_client(on_message_function):
 
 	client.loop_start() # Wait for messages and call on_message when you receive one. Creates a thread
 
-def publish_message(publisher_client, deviceID, message):
-	publisher_client.publish(PUBLISH_TOPIC + deviceID, message)
+def publish_message(publisher_client, publish_topic, message):
+	publisher_client.publish(publish_topic, message)
 
 def init_publisher():
 	client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
