@@ -1,0 +1,35 @@
+# Update when Github main branch is updated
+trigger:
+- main
+
+# Use an ubuntu virtual machine to run the pipeline
+pool:
+  vmImage: ubuntu-latest
+
+# Download arduino CLI and compile the code inside Github main branch for an ESP32
+steps:
+- script: |
+    curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+    sudo mv bin/arduino-cli /usr/local/bin/
+
+    arduino-cli core update-index
+    arduino-cli core install esp32:esp32
+
+    arduino-cli compile \
+      --fqbn esp32:esp32:esp32 \
+      --output-dir build ./TFM_ESP
+
+# Save the generated file inside Azure Blob Storage so that we can download it later with an HTTPS request
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: AzureSubscription
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      az storage blob upload \
+        --account-name cicdesp32bincodestorage \
+        --container-name esp32codecontainer \
+        --name esp32code.bin \
+        --file build/TFM_ESP.ino.bin \
+        --overwrite true \
+        --auth-mode login
