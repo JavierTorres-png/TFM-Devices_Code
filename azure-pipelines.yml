@@ -15,6 +15,10 @@ steps:
     arduino-cli core update-index
     arduino-cli core install esp32:esp32
 
+    arduino-cli lib install "ArduinoMqttClient"
+    arduino-cli lib install "ArduinoJson"
+    arduino-cli lib install "ArduinoHttpClient"
+
     arduino-cli compile \
       --fqbn esp32:esp32:esp32 \
       --output-dir build ./TFM_ESP
