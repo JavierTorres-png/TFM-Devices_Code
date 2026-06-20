@@ -1,5 +1,7 @@
 #include <ArduinoMqttClient.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
+#include <HTTPUpdate.h>
 #include "WiFi.h"
 #include "arduino_conf.h"
 
@@ -11,6 +13,7 @@ const char* password = SECRET_PSW;
 // Server-related variables
 char server[]="raspberry-gateway.local";
 int port = 1883;
+String codeURL = String("http://") + server + ":8080/esp32code.bin";
 
 // Device ID to identify the device (defined in setup)
 String deviceID = "";
@@ -45,7 +48,8 @@ void connectToWiFiNetwork() {
   // If not connected yet, wait
   while (WiFi.status() != WL_CONNECTED) {
     delay (500);
-    Serial.println("Connecting to WiFi...");
+    Serial.print("Connecting to WiFi...");
+    Serial.println(WiFi.status());
   }
   Serial.println("Connected to WiFi");
   // Set deviceID based on mac address
@@ -66,17 +70,28 @@ void connectToMQTTBroker() {
     // set the message receive callback
   mqttClient.onMessage(checkMQTTSubscribe);
   mqttClient.subscribe("status/device" + deviceID);
+  mqttClient.subscribe("status/update");
   Serial.println("DeviceID: " + deviceID);
 }
 
 void checkMQTTSubscribe(int messageSize) {
-  String payload;
-  while (mqttClient.available()) {
-    payload += (char)mqttClient.read();
-  }
+  String topic = mqttClient.messageTopic();
+  if (topic == "status/update") {
+    t_httpUpdate_return ret = httpUpdate.update(wifiClient, codeURL);
+    if (ret == HTTP_UPDATE_OK) {
+      Serial.println("Succesfully updated code");
+    } else {
+      Serial.print("Error when updating code: ");
+      Serial.println((int)ret);    }
+  } else {
+    String payload;
+    while (mqttClient.available()) {
+      payload += (char)mqttClient.read();
+    }
 
-  Serial.print("Received status change: ");
-  Serial.println(payload);
+    Serial.print("Received status change: ");
+    Serial.println(payload);
+  }
 }
 
 void publishTelemetry() {
@@ -108,6 +123,6 @@ void publishTelemetry() {
     mqttClient.print(payload);
     mqttClient.endMessage();
 
-    Serial.print("Sent the following message: ");
+    Serial.print("Sent the following message!: ");
     Serial.println(payload);
 }
