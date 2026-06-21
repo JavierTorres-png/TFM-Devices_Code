@@ -15,8 +15,8 @@ variables:
 steps:
 - script: |
     cat > ./TFM_ESP/arduino_conf.h << EOF
-    #define SECRET_SSID "$(WIFI_SSID)"
-    #define SECRET_PSW "$(WIFI_PASSWORD)"
+    #define SECRET_SSID "$(SSID)"
+    #define SECRET_PSW "$(PWD)"
     EOF
 
   displayName: 'Generate arduino_conf.h so that SSID and PWD are not displayed in GitHub'
