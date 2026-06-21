@@ -22,9 +22,6 @@ steps:
   displayName: 'Generate arduino_conf.h so that SSID and PWD are not displayed in GitHub'
 
 - script: |
-    echo "WIFI_SSID: $(SSID)"
-    echo "WIFI_PASSWORD: $(PWD)"
-
     curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
     sudo mv bin/arduino-cli /usr/local/bin/
 
