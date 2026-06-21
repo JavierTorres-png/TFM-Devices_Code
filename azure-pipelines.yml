@@ -14,7 +14,7 @@ variables:
 # Download arduino CLI and compile the code inside Github main branch for an ESP32
 steps:
 - script: |
-    cat > ./TFM_ESP/arduino_conf.h << 'EOF' 
+    cat > ./TFM_ESP/arduino_conf.h << EOF
     #define SECRET_SSID "$(WIFI_SSID)"
     #define SECRET_PSW "$(WIFI_PASSWORD)"
     EOF
