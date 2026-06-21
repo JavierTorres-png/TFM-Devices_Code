@@ -13,7 +13,7 @@ const char* password = SECRET_PSW;
 // Server-related variables
 char server[]="raspberry-gateway.local";
 int port = 1883;
-String codeURL = String("http://") + server + ":8080/esp32code.bin";
+String codeURL = String("http://") + server + ":8080/esp32_code.bin";
 
 // Device ID to identify the device (defined in setup)
 String deviceID = "";
@@ -28,6 +28,7 @@ MqttClient mqttClient(wifiClient);
 void setup() {
   Serial.begin(9600);
 
+  Serial.println(SECRET_SSID);
   connectToWiFiNetwork();
   connectToMQTTBroker();
 }
@@ -77,12 +78,25 @@ void connectToMQTTBroker() {
 void checkMQTTSubscribe(int messageSize) {
   String topic = mqttClient.messageTopic();
   if (topic == "status/update") {
+    Serial.println("Received code update");
     t_httpUpdate_return ret = httpUpdate.update(wifiClient, codeURL);
-    if (ret == HTTP_UPDATE_OK) {
-      Serial.println("Succesfully updated code");
-    } else {
-      Serial.print("Error when updating code: ");
-      Serial.println((int)ret);    }
+    switch(ret) {
+      case HTTP_UPDATE_FAILED:
+        Serial.printf(
+          "Update failed. Error (%d): %s\n",
+          httpUpdate.getLastError(),
+          httpUpdate.getLastErrorString().c_str()
+        );
+        break;
+
+      case HTTP_UPDATE_NO_UPDATES:
+        Serial.println("No updates available");
+        break;
+
+      case HTTP_UPDATE_OK:
+        Serial.println("Update successful");
+        break;
+    }
   } else {
     String payload;
     while (mqttClient.available()) {
@@ -123,6 +137,6 @@ void publishTelemetry() {
     mqttClient.print(payload);
     mqttClient.endMessage();
 
-    Serial.print("Sent the following message!: ");
+    Serial.print("Sent the following message: ");
     Serial.println(payload);
 }
