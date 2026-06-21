@@ -6,8 +6,21 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
+variables:
+  - group: ESP32_Wifi_Credentials
+  - name: 'BUILD_DIR'
+    value: 'build'
+
 # Download arduino CLI and compile the code inside Github main branch for an ESP32
 steps:
+- script: |
+    cat > ./TFM_ESP/arduino_conf.h << 'EOF' 
+    #define SECRET_SSID "$(WIFI_SSID)"
+    #define SECRET_PSW "$(WIFI_PASSWORD)"
+    EOF
+
+  displayName: 'Generate arduino_conf.h so that SSID and PWD are not displayed in GitHub'
+
 - script: |
     curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
     sudo mv bin/arduino-cli /usr/local/bin/
@@ -23,6 +36,8 @@ steps:
       --fqbn esp32:esp32:esp32 \
       --output-dir build ./TFM_ESP
 
+  displayName: 'Compile Arduino code'
+
 # Save the generated file inside Azure Blob Storage so that we can download it later with an HTTPS request
 - task: AzureCLI@2
   inputs:
@@ -37,3 +52,5 @@ steps:
         --file build/TFM_ESP.ino.bin \
         --overwrite true \
         --auth-mode login
+
+  displayName: 'Upload code to Azure Storage'
