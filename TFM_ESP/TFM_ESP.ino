@@ -45,6 +45,7 @@ void loop() {
 void connectToWiFiNetwork() {
   // Connect to the WiFi network
   Serial.println("Starting WiFi network connection...");
+  Serial.println(SECRET_SSID);
   WiFi.begin(ssid, password);
   // If not connected yet, wait
   while (WiFi.status() != WL_CONNECTED) {
