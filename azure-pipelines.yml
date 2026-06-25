@@ -31,7 +31,7 @@ steps:
     arduino-cli lib install "ArduinoMqttClient"
     arduino-cli lib install "ArduinoJson"
     arduino-cli lib install "ArduinoHttpClient"
-    arduino-cli lib install "Adafruit_Si7021"
+    arduino-cli lib install "Adafruit Si7021 Library"
 
     arduino-cli compile \
       --fqbn esp32:esp32:esp32 \
