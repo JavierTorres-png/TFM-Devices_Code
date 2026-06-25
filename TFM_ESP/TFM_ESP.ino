@@ -3,6 +3,7 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include "WiFi.h"
+#include "Adafruit_Si7021.h"
 #include "arduino_conf.h"
 
 // WiFi connection-related variables
@@ -18,27 +19,49 @@ String codeURL = String("http://") + server + ":8080/esp32_code.bin";
 // Device ID to identify the device (defined in setup)
 String deviceID = "";
 
-// Interval to publish sensed values (10 s)
-const unsigned long publishInterval = 10000;
+// MQTT-related variables
+// Interval to publish sensed values (20 s)
+const unsigned long publishInterval = 20000;
 unsigned long lastPublish = 0;
 String publishTopic = "telemetry/device";
-
 MqttClient mqttClient(wifiClient);
 
+// Sensors related variables
+const unsigned long readingInterval = 5000;
+unsigned long lastSensorReading = 0;
+Adafruit_Si7021 si7021 = Adafruit_Si7021();
+bool siAvailable = false;
+float temperatureSum = 0;
+float humiditySum = 0;
+float samples = 0;
+
+
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   connectToWiFiNetwork();
   connectToMQTTBroker();
+  checkSensors();
 }
 
 void loop() {
   mqttClient.poll();
 
-  if (millis() - lastPublish >= publishInterval) {
+  // Read sensors
+  if (millis() - lastSensorReading >= readingInterval) {
+    // Read humidity and temperature
+    float humidity, temperature;
+    readSi7021(&humidity, &temperature);
+    calculateSum(&humidity, &temperature);
+    lastSensorReading = millis();
+  }
+
+  // MQTT publish
+  if (millis() - lastPublish >= publishInterval && samples != 0) {
     publishTelemetry();
     lastPublish = millis();
   }
+
 }
 
 void connectToWiFiNetwork() {
@@ -107,11 +130,41 @@ void checkMQTTSubscribe(int messageSize) {
   }
 }
 
+void checkSensors() {
+  // SI702
+  if (!si7021.begin()) {
+    Serial.println("Did not find Si7021 sensor!");
+  } else {
+    Serial.println("Found Si7021 sensor!");
+    siAvailable = true;
+  }
+}
+
+void readSi7021(float *humidity, float *temperature) {
+  if (siAvailable) {
+    *humidity = si7021.readHumidity();
+    *temperature = si7021.readTemperature();
+  } else {
+    *humidity = 50.0;
+    *temperature = 30.0;
+  }
+    Serial.print("Humidity:    ");
+    Serial.print(*humidity, 2);
+    Serial.print("\tTemperature: ");
+    Serial.println(*temperature, 2);
+}
+
+void calculateSum(float *humidity, float *temperature) {
+  temperatureSum += *temperature;
+  humiditySum += *humidity;
+  samples++;
+}
+
 void publishTelemetry() {
     char payload[256];
 
-    int8_t temperature = 30;
-    uint8_t humidity = 90;
+    float humidityAverage = humiditySum/samples;
+    float temperatureAverage = temperatureSum/samples;
     uint8_t water_level = 0;
     uint8_t N = 0;
     uint8_t P = 0;
@@ -120,15 +173,15 @@ void publishTelemetry() {
     snprintf(payload, sizeof(payload),
       "{"
       "\"device_id\":\"%s\","
-      "\"temperature\":%d,"
-      "\"humidity\":%d,"
+      "\"temperature\":%.2f,"
+      "\"humidity\":%.2f,"
       "\"water_level\":%d,"
       "\"N\":%d,"
       "\"P\":%d,"
       "\"K\":%d"
       "}",
-      deviceID, temperature,
-      humidity, water_level,
+      deviceID, temperatureAverage,
+      humidityAverage, water_level,
       N, P, K
     );
 
@@ -138,4 +191,12 @@ void publishTelemetry() {
 
     Serial.print("Sent the following message: ");
     Serial.println(payload);
+
+    resetData();
+}
+
+void resetData() {
+  humiditySum = 0;
+  temperatureSum = 0;
+  samples = 0;
 }
