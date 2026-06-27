@@ -46,9 +46,19 @@ def process_message(msg):
 
 		# Send the received status to the client
 		if (output.status_code == 200):
-			message_to_publish = "{\"water_pump_status\":output.text}"
+			if (output.text == "[11]"):
+				message = "{\"water_pump_status\": \"ON\",\n\"fan_status\":\"ON\"}"
+			elif (output.text == "[10]"):
+				message = "{\"water_pump_status\": \"OFF\",\n\"fan_status\":\"ON\"}"
+			elif (output.text == "[01]"):
+				message = "{\"water_pump_status\": \"ON\",\n\"fan_status\":\"OFF\"}"
+			elif (output.text == "[00]"):
+				message = "{\"water_pump_status\": \"OFF\",\n\"fan_status\":\"OFF\"}"
+			else:
+				print("Unexpected output.text value:" + output.text)
+				return
 			publisher = client_mqtt.init_publisher()
-			client_mqtt.publish_message(publisher, "status/device" + device_id, message_to_publish)
+			client_mqtt.publish_message(publisher, "status/device" + device_id, message)
 
 
 # This function is used to validate the received payload and turn it into json
@@ -75,7 +85,7 @@ def thread_check_for_update():
 			if (update):
 				publisher = client_mqtt.init_publisher()
 				client_mqtt.publish_message(publisher, "status/update", "New code update")
-			time.sleep(30000)
+			time.sleep(60)
 	except KeyboardInterrupt:
 		# Print already in main
 		pass
