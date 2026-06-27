@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
+#include <ESP32Servo.h>
 #include "WiFi.h"
 #include "Adafruit_Si7021.h"
 #include "arduino_conf.h"
@@ -20,19 +21,35 @@ String codeURL = String("http://") + server + ":8080/esp32_code.bin";
 String deviceID = "";
 
 // MQTT-related variables
-// Interval to publish sensed values (20 s)
-const unsigned long publishInterval = 20000;
+// Interval to publish sensed values (10 s)
+const unsigned long publishInterval = 10000;
 unsigned long lastPublish = 0;
 String publishTopic = "telemetry/device";
 MqttClient mqttClient(wifiClient);
 
 // Sensors related variables
-const unsigned long readingInterval = 5000;
-unsigned long lastSensorReading = 0;
+#define WATER_SENSOR_PIN 34
+#define WATER_PUMP_PIN 33
+#define FAN_PIN 18
+
+// Si7021-related variables
 Adafruit_Si7021 si7021 = Adafruit_Si7021();
-bool siAvailable = false;
 float temperatureSum = 0;
 float humiditySum = 0;
+bool siAvailable = false;
+
+// Water level sensor is not completely accurate, so value is scalated. We use double instead of int to avoid having problems when doing divisions
+const double waterLevelRawMin = 1400;
+const double waterLevelRawMax = 2300;
+float waterSum = 0;
+
+// Servo-related variables
+Servo servo;
+uint8_t FAN_OFF = 0;
+uint8_t FAN_ON = 90;
+
+const unsigned long readingInterval = 2000;
+unsigned long lastSensorReading = 0;
 float samples = 0;
 
 
@@ -41,7 +58,8 @@ void setup() {
 
   connectToWiFiNetwork();
   connectToMQTTBroker();
-  checkSensors();
+  sensorsInit();
+  actuatorsInit();
 }
 
 void loop() {
@@ -52,7 +70,9 @@ void loop() {
     // Read humidity and temperature
     float humidity, temperature;
     readSi7021(&humidity, &temperature);
-    calculateSum(&humidity, &temperature);
+    float waterLevel;
+    readWaterLevel(&waterLevel);
+    calculateSum(&humidity, &temperature, &waterLevel);
     lastSensorReading = millis();
   }
 
@@ -127,10 +147,55 @@ void checkMQTTSubscribe(int messageSize) {
 
     Serial.print("Received status change: ");
     Serial.println(payload);
+
+    // Parse JSON
+    StaticJsonDocument<128> doc;
+    DeserializationError error = deserializeJson(doc, payload);
+
+    if (error) {
+      Serial.print("JSON parse failed: ");
+      Serial.println(error.c_str());
+      return;
+    }
+
+    const char* water_pump_status = doc["water_pump_status"];
+
+    if (water_pump_status != nullptr) {
+      Serial.print("Pump state: ");
+      Serial.println(water_pump_status);
+
+      if (strcmp(water_pump_status, "ON") == 0) {
+        digitalWrite(WATER_PUMP_PIN, HIGH);
+      } else if (strcmp(water_pump_status, "OFF") == 0) {
+        digitalWrite(WATER_PUMP_PIN, LOW);
+      } else {
+        Serial.println("Unknown water_pump_status value");
+      }
+    } else {
+      Serial.println("Key water_pump_status not found");
+    }
+
+    const char* fan_status = doc["fan_status"];
+
+    if (fan_status != nullptr) {
+      Serial.print("Fan state: ");
+      Serial.println(fan_status);
+
+      if (strcmp(fan_status, "ON") == 0) {
+        servo.write(FAN_ON);
+      } else if (strcmp(fan_status, "OFF") == 0) {
+        servo.write(FAN_OFF);
+      } else {
+        Serial.println("Unknown fan_status value");
+      }
+    } else {
+      Serial.println("Key fan_status not found");
+    }
+    
   }
 }
 
-void checkSensors() {
+void sensorsInit() {
   // SI702
   if (!si7021.begin()) {
     Serial.println("Did not find Si7021 sensor!");
@@ -138,6 +203,18 @@ void checkSensors() {
     Serial.println("Found Si7021 sensor!");
     siAvailable = true;
   }
+  // Water level sensor
+  pinMode(WATER_SENSOR_PIN, INPUT);
+}
+
+void actuatorsInit() {
+  // Water pump actuator, start without pumping water
+  pinMode(WATER_PUMP_PIN, OUTPUT);
+  digitalWrite(WATER_PUMP_PIN, LOW);
+
+  // Fan actuator, 
+  servo.attach(FAN_PIN);
+  servo.write(FAN_OFF);
 }
 
 void readSi7021(float *humidity, float *temperature) {
@@ -154,9 +231,29 @@ void readSi7021(float *humidity, float *temperature) {
     Serial.println(*temperature, 2);
 }
 
-void calculateSum(float *humidity, float *temperature) {
+void readWaterLevel(float *waterLevel) {
+  int sensorValue = analogRead(WATER_SENSOR_PIN);
+
+  // Convert the sensor value to a percentage (0 to 100%)
+  if (sensorValue <= waterLevelRawMin) { // Min the sensor detects
+    *waterLevel = 0;
+  } else if (sensorValue >= waterLevelRawMax) { // Max detected by sensor
+    *waterLevel = 100;
+  } else {
+    *waterLevel = ((sensorValue - waterLevelRawMin) / (waterLevelRawMax - waterLevelRawMin)) * 100;
+  }
+
+  Serial.print("Water level (raw): ");
+  Serial.print(sensorValue);
+  Serial.print("\tWater level (percentage): ");
+  Serial.print(*waterLevel, 2);
+  Serial.println("%");
+}
+
+void calculateSum(float *humidity, float *temperature, float *waterLevel) {
   temperatureSum += *temperature;
   humiditySum += *humidity;
+  waterSum += *waterLevel;
   samples++;
 }
 
@@ -165,7 +262,7 @@ void publishTelemetry() {
 
     float humidityAverage = humiditySum/samples;
     float temperatureAverage = temperatureSum/samples;
-    uint8_t water_level = 0;
+    uint8_t waterLevelAverage = waterSum/samples;
     uint8_t N = 0;
     uint8_t P = 0;
     uint8_t K = 0;
@@ -181,7 +278,7 @@ void publishTelemetry() {
       "\"K\":%d"
       "}",
       deviceID, temperatureAverage,
-      humidityAverage, water_level,
+      humidityAverage, waterLevelAverage,
       N, P, K
     );
 
@@ -198,5 +295,6 @@ void publishTelemetry() {
 void resetData() {
   humiditySum = 0;
   temperatureSum = 0;
+  waterSum = 0;
   samples = 0;
 }
